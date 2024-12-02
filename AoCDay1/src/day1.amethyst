@@ -1,0 +1,224 @@
+namespace day1;
+
+// Assumes the input is in storage "input list1" and "input list2"
+// both lists have length 1000
+
+objective general literal;
+player node;
+
+player length1;
+player length2;
+player length;
+
+player heap;
+
+function set_heap1 {
+    "data modify storage heap heap set value list1";
+    scoreboard players set heap general 1;
+};
+function set_heap2 {
+    "data modify storage heap heap set value list2";
+    scoreboard players set heap general 2;
+};
+
+function get_length {
+    execute if score heap general matches 1 run return run scoreboard players operation length general = length1 general;
+    execute if score heap general matches 2 run return run scoreboard players operation length general = length2 general;
+};
+
+// arguments: heap, node
+function read_heap_entry_nbt {
+    "$return run data get storage input $(heap)[$(node)]";
+};
+
+// scoreboard argument: node general
+function read_heap_entry {
+    "data modify storage read_heap_entry_scratch base set value {}";
+    "data modify storage read_heap_entry_scratch base.heap set from storage heap heap";
+    execute "store result storage read_heap_entry_scratch base.node int 1" run scoreboard players get node general;
+    return run "function day1:read_heap_entry_nbt with storage read_heap_entry_scratch base"
+};
+
+
+// arguments: heap, index1, index2
+function swap_nbt {
+    "$data modify storage swap_nbt_scratch temp set from storage input $(heap)[$(index1)]";
+    "$data modify storage input $(heap)[$(index1)] set from storage input $(heap)[$(index2)]";
+    "$data modify storage input $(heap)[$(index2)] set from storage swap_nbt_scratch temp";
+};
+
+player index1;
+player index2;
+// arguments: heap
+// scoreboard argument: swap_index1, swap_index2 general
+function swap {
+    "data modify storage swap_scratch base set value {}";
+    "data modify storage swap_scratch base.heap set from storage heap heap";
+    execute "store result storage swap_scratch base.index1 int 1" run scoreboard players get index1 general;
+    execute "store result storage swap_scratch base.index2 int 1" run scoreboard players get index2 general;
+    return run "function day1:swap_nbt with storage swap_scratch base";
+};
+
+player child1;
+player child2;
+// scoreboard arguments: node
+// sets child1, child2 general scoreboards
+function get_children {
+    scoreboard players operation child1 general = node general;
+    scoreboard players operation child1 general += child1 general;
+    scoreboard players operation child2 general = child1 general;
+
+    // child1 = 2*node + 1
+    scoreboard players add child1 general 1;
+    // child2 = 2*node + 2
+    scoreboard players add child2 general 2;
+};
+
+player child1_value;
+player child2_value;
+player get_child_values_scratch;
+// scoreboard arguments: node
+// sets child1, child1_value, child2, child2_value general scoreboards
+function get_child_values {
+    function get_children;
+    function get_length;
+    scoreboard players operation get_child_values_scratch general = node general;
+
+    scoreboard players operation node general = child1 general;
+    execute if score child1 general < length general "store result score child1_value general" run function read_heap_entry;
+
+    scoreboard players operation node general = child2 general;
+    execute if score child2 general < length general "store result score child2_value general" run function read_heap_entry;
+
+    scoreboard players operation node general = get_child_values_scratch general;
+};
+
+player min_node;
+player min_value;
+player current_node_value;
+player sink_down_scratch_node1;
+// scoreboard arguments (destructive): node
+function sink_down {
+    function get_child_values;
+    function get_length;
+
+    scoreboard players operation sink_down_scratch_node1 general = node general;
+    
+    // calculate the minimum of the node and its children
+    scoreboard players operation min_node general = node general;
+    execute "store result score min_value general" run function read_heap_entry;
+
+    execute if score child1 general < length general if score child1_value general < min_value general run function {
+        scoreboard players operation min_node general = child1 general;
+        scoreboard players operation min_value general = child1_value general;
+    };
+    execute if score child2 general < length general if score child2_value general < min_value general run function {
+        scoreboard players operation min_node general = child2 general;
+        scoreboard players operation min_value general = child2_value general;
+    };
+
+    // we need to put *something* after the early return so i guess we just return the min node?
+    execute if score min_node general = node general run return run scoreboard players get min_node general;
+
+    // if the min node is not at the top, swap their values and recursively sink down
+    scoreboard players operation index1 general = node general;
+    scoreboard players operation index2 general = min_node general;
+    function swap;
+
+    scoreboard players operation node general = min_node general;
+    function sink_down;
+};
+
+player build_heap_counter;
+
+function build_heap_loop {
+    "scoreboard players remove build_heap_counter general 1";
+
+    scoreboard players operation node general = build_heap_counter general;
+    function sink_down;
+    
+    execute if score build_heap_counter general matches 1..1000 run function build_heap_loop;
+};
+
+
+function build_heap {
+    function get_length;
+    scoreboard players operation build_heap_counter general = length general;
+
+    function build_heap_loop;
+};
+
+function reduce_length {
+    execute if score heap general matches 1 run "scoreboard players remove length1 general 1";
+    execute if score heap general matches 2 run "scoreboard players remove length2 general 1";
+};
+
+player pop_min_result;
+function pop_min {
+    scoreboard players set node general 0;
+    execute "store result score pop_min_result general" run function read_heap_entry;
+
+    function reduce_length;
+
+    scoreboard players set index1 general 0;
+    execute if score heap general matches 1 run scoreboard players operation index2 general = length1 general;
+    execute if score heap general matches 2 run scoreboard players operation index2 general = length2 general;
+    function swap;
+
+    scoreboard players set node general 0;
+    function sink_down;
+
+    return run scoreboard players get pop_min_result general;
+};
+
+
+player total_distance;
+player smallest1;
+player smallest2;
+function solve {
+    function set_heap1;
+    execute "store result score smallest1 general" run function pop_min;
+
+    function set_heap2;
+    execute "store result score smallest2 general" run function pop_min;
+
+    execute "store result storage debug base.smallest1 int 1" run scoreboard players get smallest1 general;
+    execute "store result storage debug base.smallest2 int 1" run scoreboard players get smallest2 general;
+    "function day1:debug with storage debug base";
+
+
+    // swap the two if necessary so we always get a nonnegative result (multiplying by -1 is a bit more messy)
+    execute if score smallest1 general < smallest2 general run scoreboard players operation smallest1 general >< smallest2 general;
+
+    scoreboard players operation smallest1 general -= smallest2 general;
+
+    scoreboard players operation total_distance general += smallest1 general;
+
+
+    execute if score length1 general matches 1..1000 run function solve;
+};
+
+function debug {
+    "$say $(smallest1) $(smallest2)"
+};
+
+// arguments: total_distance
+function say_result {
+    "$say total distance: $(total_distance)"
+};
+
+function main {
+    function set_heap1;
+    function build_heap;
+    say "built heap from list1";
+
+    function set_heap2;
+    function build_heap;
+    say "built heap from list2";
+
+    scoreboard players set total_distance general 0;
+    function solve;
+
+    execute "store result storage result base.total_distance int 1" run scoreboard players get total_distance general;
+    "function day1:say_result with storage result base";
+};
